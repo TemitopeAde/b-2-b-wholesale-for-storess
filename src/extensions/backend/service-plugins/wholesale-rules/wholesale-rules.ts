@@ -1,0 +1,9 @@
+import { validations } from '@wix/ecom/service-plugins';
+
+validations.provideHandlers({
+  getValidationViolations: async ({ request, metadata }) => {
+    return {
+      violations: [],
+    };
+  },
+});

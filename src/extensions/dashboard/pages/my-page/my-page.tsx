@@ -1,25 +1,53 @@
-import type { FC } from 'react';
-import { EmptyState, Page, WixDesignSystemProvider } from '@wix/design-system';
-import '@wix/design-system/styles.global.css';
+import { useEffect, useMemo, useState } from 'react';
+import { Building2, FileText, LayoutDashboard, PackageCheck, Percent, Plus, Settings2, Users } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast, Toaster } from 'sonner';
+import { plugins } from '@wix/site-plugins';
+import { Button } from '../../../../components/ui/button';
+import { Card, CardContent, CardHeader } from '../../../../components/ui/card';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '../../../../components/ui/dialog';
+import { Input } from '../../../../components/ui/input';
+import { collections, createItem, listItems, removeItem, type DataItem } from '../../../../lib/wholesale/data';
+import '../../../../styles/globals.css';
 
-const DashboardPage: FC = () => {
-  return (
-    <WixDesignSystemProvider>
-      <Page>
-        <Page.Header
-          title="My Page"
-          subtitle="This is a subtitle for your page"
-        />
-        <Page.Content>
-          <EmptyState
-            title="My Page"
-            subtitle="Edit src/extensions/dashboard/pages/my-page/my-page.tsx to change this text."
-            skin="page"
-          />
-        </Page.Content>
-      </Page>
-    </WixDesignSystemProvider>
-  );
-};
+type Section = 'overview' | 'groups' | 'applications' | 'pricing' | 'moq' | 'orders' | 'storefront' | 'settings';
+const navigation: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
+  { id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'groups', label: 'Customer groups', icon: Users }, { id: 'applications', label: 'Applications', icon: FileText }, { id: 'pricing', label: 'Price lists & rules', icon: Percent }, { id: 'moq', label: 'MOQ & product rules', icon: PackageCheck }, { id: 'orders', label: 'Orders & quotes', icon: Building2 }, { id: 'storefront', label: 'Storefront widgets', icon: Building2 }, { id: 'settings', label: 'Settings', icon: Settings2 },
+];
+const groupSchema = z.object({ name: z.string().trim().min(1, 'A group name is required').max(100), minimumOrderValue: z.coerce.number().min(0), defaultDiscount: z.coerce.number().min(0).max(100) });
+type GroupValues = z.infer<typeof groupSchema>;
 
-export default DashboardPage;
+function CreateGroup({ onCreated }: { onCreated: () => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const form = useForm<z.input<typeof groupSchema>, unknown, GroupValues>({ resolver: zodResolver(groupSchema), defaultValues: { name: '', minimumOrderValue: 0, defaultDiscount: 0 } });
+  async function submit(values: GroupValues) { try { await createItem(collections.groups, { ...values, enabled: true }); toast.success('Customer group created'); form.reset(); setOpen(false); await onCreated(); } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to create group'); } }
+  return <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) form.reset(); }}><DialogTrigger asChild><Button><Plus className="mr-2 size-4" />Add group</Button></DialogTrigger><DialogContent><DialogTitle>Create customer group</DialogTitle><DialogDescription className="mt-1 text-sm text-slate-500">Set the default rules for approved wholesale customers.</DialogDescription><form className="mt-5 space-y-4" onSubmit={form.handleSubmit(submit)}><label className="block text-sm font-medium">Group name<Input className="mt-1" {...form.register('name')} />{form.formState.errors.name && <span className="text-xs text-red-600">{form.formState.errors.name.message}</span>}</label><label className="block text-sm font-medium">Minimum order value<Input className="mt-1 appearance-none" type="number" min="0" {...form.register('minimumOrderValue')} /></label><label className="block text-sm font-medium">Default discount (%)<Input className="mt-1 appearance-none" type="number" min="0" max="100" {...form.register('defaultDiscount')} /></label><div className="flex justify-end gap-2 pt-2"><DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose><Button disabled={form.formState.isSubmitting} type="submit">{form.formState.isSubmitting ? 'Creating…' : 'Create group'}</Button></div></form></DialogContent></Dialog>;
+}
+
+function Records({ title, collectionId, createAction }: { title: string; collectionId: string; createAction?: (reload: () => Promise<void>) => React.ReactNode }) {
+  const [records, setRecords] = useState<DataItem[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string>();
+  const reload = async () => { setLoading(true); try { setRecords(await listItems(collectionId)); setError(undefined); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load records'); } finally { setLoading(false); } };
+  useEffect(() => { void reload(); }, [collectionId]);
+  return <Card><CardHeader className="flex flex-row items-center justify-between"><div><h2 className="text-lg font-semibold">{title}</h2><p className="text-sm text-slate-500">Manage the wholesale rules stored for this site.</p></div>{createAction?.(reload)}</CardHeader><CardContent>{error ? <p className="rounded bg-red-50 p-4 text-sm text-red-700">{error}</p> : loading ? <p className="p-6 text-sm text-slate-500">Loading…</p> : records.length === 0 ? <p className="rounded-lg border border-dashed p-10 text-center text-sm text-slate-500">No records yet.</p> : <div className="divide-y rounded-lg border">{records.map((record) => <div className="flex items-center justify-between p-4" key={record._id}><div><p className="font-medium">{String(record.name ?? record.companyName ?? record.productId ?? 'Untitled')}</p><p className="text-sm text-slate-500">{Object.entries(record).filter(([key]) => !key.startsWith('_') && !['name', 'companyName', 'productId'].includes(key)).slice(0, 2).map(([key, value]) => `${key}: ${String(value)}`).join(' · ')}</p></div><Button variant="ghost" onClick={() => void removeItem(collectionId, record._id).then(reload).then(() => toast.success('Record deleted')).catch(() => toast.error('Unable to delete record'))}>Delete</Button></div>)}</div>}</CardContent></Card>;
+}
+
+function Overview({ counts }: { counts: Record<string, number> }) { return <><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{[['Customer groups', counts.groups], ['Pending applications', counts.applications], ['Pricing rules', counts.pricing], ['MOQ rules', counts.moq]].map(([label, value]) => <Card key={String(label)}><CardHeader><p className="text-sm text-slate-500">{label}</p></CardHeader><CardContent><p className="text-3xl font-semibold">{value}</p></CardContent></Card>)}</div><Card className="mt-6"><CardHeader><h2 className="font-semibold">Wholesale setup</h2></CardHeader><CardContent><ol className="list-decimal space-y-2 pl-5 text-sm text-slate-600"><li>Create a customer group and its minimum order policy.</li><li>Add pricing rules and product MOQ requirements.</li><li>Review incoming wholesale applications.</li><li>Place the Quick Order and Application widgets in the Wix Editor.</li></ol></CardContent></Card></>; }
+
+function StorefrontPlugins() {
+  const pluginId = '62f15cf1-4468-4a2a-961e-9929129970e5';
+  const [placed, setPlaced] = useState<boolean>();
+  const [error, setError] = useState<string>();
+  const refresh = async () => { try { const response = await plugins.getPlacementStatus(); const status = response.placementStatuses?.find((item) => item.pluginId === pluginId); setPlaced(status?.placedInSlot ?? false); setError(undefined); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to read storefront placement status'); } };
+  useEffect(() => { void refresh(); }, []);
+  return <Card><CardHeader className="flex flex-row items-center justify-between"><div><h2 className="text-lg font-semibold">Storefront plugins</h2><p className="text-sm text-slate-500">Live placement status is retrieved from Wix Site Plugins.</p></div><Button variant="outline" onClick={() => void refresh()}>Refresh status</Button></CardHeader><CardContent>{error ? <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p> : <div className="flex items-center justify-between rounded-lg border p-4"><div><p className="font-medium">Wholesale Product Pricing</p><p className="text-sm text-slate-500">Wix Stores V3 product page · details slot 2</p></div><span className={`rounded-full px-3 py-1 text-sm font-medium ${placed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{placed === undefined ? 'Checking…' : placed ? 'Placed on site' : 'Not placed'}</span></div>}</CardContent></Card>;
+}
+
+export default function WholesaleDashboard() {
+  const [section, setSection] = useState<Section>('overview'); const [counts, setCounts] = useState<Record<string, number>>({ groups: 0, applications: 0, pricing: 0, moq: 0 });
+  const refreshCounts = async () => { const result = await Promise.all([listItems(collections.groups), listItems(collections.applications), listItems(collections.pricingRules), listItems(collections.moqRules)]); setCounts({ groups: result[0].length, applications: result[1].length, pricing: result[2].length, moq: result[3].length }); };
+  useEffect(() => { void refreshCounts(); }, []);
+  const content = useMemo(() => section === 'overview' ? <Overview counts={counts} /> : section === 'groups' ? <Records title="Customer groups" collectionId={collections.groups} createAction={(reload) => <CreateGroup onCreated={async () => { await reload(); await refreshCounts(); }} />} /> : section === 'applications' ? <Records title="Wholesale applications" collectionId={collections.applications} /> : section === 'pricing' ? <Records title="Pricing rules" collectionId={collections.pricingRules} /> : section === 'moq' ? <Records title="MOQ rules" collectionId={collections.moqRules} /> : section === 'storefront' ? <StorefrontPlugins /> : <Card><CardHeader><h2 className="text-lg font-semibold">{navigation.find((item) => item.id === section)?.label}</h2></CardHeader><CardContent><p className="text-sm text-slate-500">This module is ready to connect as its Wix integration is completed.</p></CardContent></Card>, [section, counts]);
+  return <div className="flex min-h-screen bg-slate-50"><Toaster richColors position="top-right" /><aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-slate-200 bg-white"><div className="border-b px-5 py-5"><p className="text-xs font-semibold uppercase tracking-wider text-blue-700">B2B Wholesale</p><h1 className="mt-1 text-lg font-semibold">Pricing Manager</h1></div><nav className="flex-1 space-y-1 p-3">{navigation.map(({ id, label, icon: Icon }) => <button key={id} onClick={() => setSection(id)} className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm ${section === id ? 'bg-blue-50 font-semibold text-blue-700' : 'text-slate-600 hover:bg-slate-100'}`}><Icon className="size-4" />{label}</button>)}</nav><div className="border-t p-4 text-xs text-slate-500">Wholesale rules apply at checkout.</div></aside><main className="min-w-0 flex-1 p-8"><div className="mx-auto max-w-6xl">{content}</div></main></div>;
+}
