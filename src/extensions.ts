@@ -23,6 +23,16 @@ import paidPlanPurchased from './extensions/backend/events/paid-plan-purchased/p
 
 import paidPlanChanged from './extensions/backend/events/paid-plan-changed/paid-plan-changed.extension.ts';
 
+import appRemoved from './extensions/backend/events/app-removed/app-removed.extension.ts';
+
+import paidPlanAutoRenewalCancelled from './extensions/backend/events/paid-plan-auto-renewal-cancelled/paid-plan-auto-renewal-cancelled.extension.ts';
+
+import planConvertedToPaid from './extensions/backend/events/plan-converted-to-paid/plan-converted-to-paid.extension.ts';
+
+import planReactivated from './extensions/backend/events/plan-reactivated/plan-reactivated.extension.ts';
+
+import planTransferred from './extensions/backend/events/plan-transferred/plan-transferred.extension.ts';
+
 export default app()
   .use(myPage)
   .use(wholesaleQuickOrder)
@@ -30,4 +40,4 @@ export default app()
   .use(wholesaleCatalog)
   .use(wholesalePricing)
   .use(wholesaleAccount)
-  .use(wholesaleRules).use(dataCollections).use(wholesaleDiscounts).use(wholesaleProductPricing).use(appInstalled).use(paidPlanPurchased).use(paidPlanChanged);
+  .use(wholesaleRules).use(dataCollections).use(wholesaleDiscounts).use(wholesaleProductPricing).use(appInstalled).use(paidPlanPurchased).use(paidPlanChanged).use(appRemoved).use(paidPlanAutoRenewalCancelled).use(planConvertedToPaid).use(planReactivated).use(planTransferred);

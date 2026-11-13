@@ -3,24 +3,18 @@ import {
   isFreeTrialInProgress,
   notifyLifecycleEvent,
 } from '../../../../backend/notify-lifecycle-event';
+import { recordLifecycleEvent } from '../../../../backend/record-lifecycle-event';
+import { runInBackground } from '../../../../backend/run-in-background';
 
-export default appInstances.onAppInstancePaidPlanPurchased(async (event) => {
-  try {
-    const data = event.data;
-    const freeTrial = await isFreeTrialInProgress();
-
-    await notifyLifecycleEvent({
-      eventType: freeTrial ? 'FREE_TRIAL' : 'PAID_PLAN_PURCHASED',
-      vendorProductId: data.vendorProductId,
-      cycle: data.cycle,
-      invoiceId: data.invoiceId,
-      occurredAt: data.operationTimeStamp,
-      instanceIdHint: event.metadata?.instanceId,
-    });
-  } catch (error) {
-    console.error(
-      '[B2B Wholesale for Stores] Failed to handle paid plan purchased event',
-      error instanceof Error ? error.message : 'Unknown error',
-    );
-  }
+// Wix needs a fast acknowledgement; email and Sheets delivery finish after the response.
+export default appInstances.onAppInstancePaidPlanPurchased((event) => {
+  runInBackground('PaidPlanPurchased email', async () => notifyLifecycleEvent({
+    eventType: (await isFreeTrialInProgress()) ? 'FREE_TRIAL' : 'PAID_PLAN_PURCHASED',
+    vendorProductId: event.data.vendorProductId,
+    cycle: event.data.cycle,
+    invoiceId: event.data.invoiceId,
+    occurredAt: event.data.operationTimeStamp,
+    instanceIdHint: event.metadata?.instanceId,
+  }));
+  runInBackground('PaidPlanPurchased Sheets record', () => recordLifecycleEvent('PaidPlanPurchased', event));
 });
